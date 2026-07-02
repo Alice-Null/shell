@@ -4,47 +4,59 @@
 // see https://discord.com/channels/1429178497875841034/1429178499473867017/1519622882454540298 
 // for advice
 
-use std::{fmt::Error};
-use std::process;
-enum Value {
+use std::{collections::btree_map::Values, convert::Infallible, fmt::Error, num::ParseIntError, path::Path, process, str::FromStr};
+
+struct Path (Buf: std::path::PathBuf)
+enum Primitive {
     Str(String),
     Int(usize),
     Signed(isize),
-    Vec(Vec<Value>),
+    FilePath(Path)
 }
 
-impl IntoIterator for Value{
-    type Item = Value;
-
-    type IntoIter = std::slice::Iter<Value>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        todo!()
-    }
-}
-
-impl ToString for Value {
-    fn get_string_arg(&self) -> String {
-        // turn into a string
-        // mostly for use in arguments
-        use Value::*;
+impl ToString for Primitive {
+    fn to_string (&self) -> String {
+        use Primitive::*;
         match self {
-            Str(string) => {*string},
-            Int(number) => {number.to_string()}
-            Signed(signed_num) => {signed_num.to_string()}
-            Vec(vec) => {
-                let flat_vec = vec.iter().flatten();
-                let delimited_vec = flat_vec.map();
-                todo!()
-            },
+            Str(string) => string.to_string(),
+            Int(number) => number.to_string(),
+            Signed(signed_num) => signed_num.to_string(),
+            FilePath(path) => path.to_string()
         }
     }
 }
 
-impl Value {
-    fn len(&self) -> usize {
-        (self.to_string().len()
+impl FromStr for Primitive {
+    type Err = Infallible; // falls back to storing directly
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use Primitive::*;
+
+        match s {
+            _ if s.parse::<isize>().is_ok() => {
+                // parses as isize
+                Ok(Signed(s.parse::<usize>().unwrap()))
+            _ if s.parse::<isize>().is_ok() => {
+                // parses as isize
+                Ok(Signed(s.parse::<isize>().unwrap()))
+            _ if s.parse::<usize>().is_ok() => {
+                // parses as usize
+                Ok(Int(s.parse::<usize>().unwrap()))
+            }
+            _  => Ok(Str(s.to_string()))
+        }
     }
+}
+
+impl TryInto<Arg> for Primitive {
+    type Error = Error;
+    fn try_into(self) -> Result<Arg, Error> {
+        todo!()
+    }
+}
+
+struct  Arg {
+    arguments: Vec<String>
 }
 
 // enum Argument <'a> {
@@ -69,7 +81,7 @@ struct Variable <'a> {
     name: &'a str,
     mutable: bool,
     strict_type: bool,
-    val: Value
+    val: Primitive
 }
 
 impl Variable <'_> {
@@ -113,8 +125,8 @@ impl Variable <'_> {
         }   
         true // nothing was invalid
     }
-    const fn infer_type(value: &str) -> Value {
-        value.parse::<Value>()
+    const fn infer_type(value: &str) -> Primitive {
+        value.parse::<Primitive>();
     }
 }
 
@@ -175,7 +187,7 @@ trait BuiltInCommand: Command {
 struct ExternalCommand <'a> {
     name: &'a str,
     layout: Option<Layout>,
-    arguments: Vec<Value>
+    arguments: Vec<Primitive>
 }
 
 impl Command for ExternalCommand <'_>{
@@ -221,9 +233,7 @@ impl Command for ExternalCommand <'_>{
 //     }
 // }
 
-struct Layout {
-    args: Vec<Value>
-}
+struct Layout (Vec<Value>)
 impl Layout {
     fn len(&self)-> &usize  {
         &self.args.len()
