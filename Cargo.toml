@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+[features]
+default = ["extras"]
+extras = ["fancy_commands", "extended_math"]
+fancy_commands = []
+extended_math = []
