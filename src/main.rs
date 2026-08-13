@@ -3,10 +3,9 @@ compile_error!{"get a real operating system please\n(real means unix like)"}
 
 // making a parser first
 mod parser;
-mod primitives;
-#[macro_use]
-mod macros;
+mod types;
 
 fn main () {
+    let foo: Box<dyn types::Operations>;
     todo!();
 }
