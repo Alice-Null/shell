@@ -5,14 +5,14 @@ use std::{ffi::OsString, path::PathBuf};
 use std::ops::Add as stdAdd;
 
 /// Every valid type
-enum Types <'a> {
+enum Types {
     Bool(bool),
     String(OsString),
     Int(i64),
     Float(f64),
     Path(PathBuf),
-    Array(Vec<&'a Types<'a>>),
-    Dictionary(BTreeMap<OsString, Types<'a>>),
+    Array(Vec<Types>),
+    Dictionary(BTreeMap<OsString, Types>),
 }
 use Types::*;
 use ErrorVariant::*;
@@ -28,7 +28,7 @@ enum SimpleDiscriminant {
     Dictionary
 }
 // for when the actual value isn't important
-impl From<Types <'_>> for SimpleDiscriminant {
+impl From<Types> for SimpleDiscriminant {
     fn from(value: Types) -> Self {
         match value {
             Bool(_) => SimpleDiscriminant::Bool,
@@ -47,50 +47,46 @@ impl From<Types <'_>> for SimpleDiscriminant {
 /// mostly for error propogation
 #[derive(Clone, Copy)]
 enum Operator {
-    // typecasting
-    FloatCastToInt,
-    // basically everything
-    Assign,
     // bool
     Not,
+    // more bit operations to come
+    // ,,,eventually
+
     // math
-    Negation,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    // Array
-    ReadIndex,
-    AssignIndex,
-    Append,
-    Prepend,
-    Insert,
-    // more to come eventually
+    Negation, // -, -= is Subtraction
+    Add, AddAssign, // a + b, a += b
+    Sub, SubAssign, // a - b, a -= b
+    Mul, MulAssign, // a * b, a *= b
+    Div, DivAssign, // a / b, a /= b
+    // Collections
+    ReadKey, // key is an int in arrays
+    Assign, // assign value at a key
+    // arrays only, maps don't have a clear next value
+    // nor is inserting meaningfully different from assigning
+        Append,
+        Prepend,
+        Insert,
+    // more to come eventually, probably
 }
 
 #[derive(Copy, Clone)]
 enum ErrorVariant {
-    // very common error
+    // This is gonna be evenwhere lol
     TypeErr,
     // mostly math
     OverflowErr,
-    NanErr,
     DivideByZeroErr
 }
 #[derive(Clone)]
 struct Error <'a> {
     operator: Operator,
     err_type: ErrorVariant,
-    types: Vec<&'a Types<'a>>
+    types: Vec<&'a Types>
 }
 
 // Boolean operations
 // (bitwise operatons, but only bools are supported)
-impl Types <'_> {
+impl Types {
     // !self
     // true -> false; false -> true
     // only works on booleans
@@ -109,41 +105,18 @@ impl Types <'_> {
     }
 }
 
-fn float_to_int_or_err<'a>(float: f64) -> Result<i64, Error<'a>> {
-    if i64::MIN as f64 <= float && float <= i64::MAX as f64 && !float.is_nan() {
-        unsafe {
-            // SAFETY
-            // float is within bounds of i64 & is a number
-            Ok(float.to_int_unchecked())
-        }
-    } else {
-        match float.signum() {
-            1.0 => {Ok(i64::MAX)},
-            -1.0 => {Ok(i64::MIN)},
-            _ => {
-                // assuming signum docs are correct
-                // at this point, must be NaN
-                Err(Error{
-                    operator: Operator::FloatCastToInt,
-                    err_type: NanErr,
-                    types: vec![&Float(float)],
-                })
-            }
-        }
-    }        
-}
 // Math functions                                       //
 // anything that isn't a float or int throws a typerror //
 // only implements things that already exist in rust    //
 // mostly because it's exhaustive as far as i can tell  //
-impl Types <'_> {
-    // floats being NaN or 
-    // negationm
-    // -self
-    // errors for anything other than a float or int
-    // equivalent to `0 - number`
-    // if self isn't a number, return a TypeError
-    // otherwise infallible
+impl Types {
+    /// Negation. Syntax of `-self`.
+    /// Errors for anything other than a float or int.
+    /// Mathematically equivalent to `0 - self`. 
+    /// (It actually just flips a sign bit).
+    /// Errors only when `self` is neither a Float(_) nor Err(_),
+    /// returning a basic typerror.
+    /// Otherwise infallible
     fn negative(&self) -> Result<Self, Error> {
         match self {
             Int(num) => {Ok(Types::Int(-num))},
@@ -168,10 +141,73 @@ impl Types <'_> {
     // a type that sets self to the result                //
     ////////////////////////////////////////////////////////
 
-    // compare types of two inputs.
-    // if they can be added, add them together 
-    // retain type of self
-    // syntax is `self + other`
+    /// Add two numbers and return the fallible output.
+    /// Output retains the type of self.
+    /// # Example
+    /// ```
+    /// let int = &Int(983_i64);
+    /// let float = &Float(17.0_f64)
+    /// 
+    /// assert_eq!(add(float, int), &Float(1000.0_f64));
+    /// assert_eq!(add(int, float), &Int(1000_i64)));
+    /// ```
+    /// `add` returns a type error when one or more inputs are not numbers.
+    /// A number here is either an `Int` or a `Float`.
+    /// # Example
+    /// ```
+    /// let int = &Int(5_i64);
+    /// let string = &String("4.96");
+    /// let type_error = Err(
+    ///     Error {
+    ///         operator: Operator::Add,
+    ///         err_type: TypeErr,
+    ///         types: vec![int, string]
+    ///      }
+    /// );
+    /// 
+    /// assert_eq!(add(int, string), Err(type_error));
+    /// ```
+    /// When both types are the same (two `Ints` or two `Floats`),
+    /// numbers are added saturatingly.
+    /// # Example
+    /// ```
+    /// // Int
+    /// let small = &Int(5);
+    /// let huge_positive = &Int(i64::MAX - 3);
+    /// let huge_negative = &Int(i64::MAX + 3);
+    /// 
+    /// assert_eq!(add(small, huge_positive), &Int(i64::MAX));
+    /// assert_eq!(add(small, huge_negative), &Int(i64::MIN));
+    /// 
+    /// // Float
+    /// let small = &Float(398.1);
+    /// let huge_positive = &Float(f64::MAX - 28.19);
+    /// let huge_negative = &Float(f64::MIN + 28.19)
+    /// assert_eq!(add(small, huge_positive), &Float(f64::MAX));
+    /// assert_eq!(add(small, huge_negative), &Float(f64::MIN));
+    /// ```
+    ///
+    /// When adding a Float to an `Int` (`add(Int(_), Float(_)`),
+    /// the `Float` is cast to an `Int`, such that;
+    /// `f64::NAN` is `0_i64`, anything larger than `i64::MAX` is `i64::MAX`,
+    /// and anything less than `i64::MIN` is `i64::MIN`.
+    /// Anything else is cast to an `Int`.
+    /// # Example
+    /// ```
+    /// let boring_int = &Int(9);
+    /// let very_large_float = &Float(f64::MAX);
+    /// let very_small_float = &Float(f64::MIN);
+    /// let float_nan = &Float(f64::NAN):
+    /// 
+    /// assert_eq!(add(boring_int, very_large_float), &Int(i64::MAX));
+    /// assert_eq!(add(boring_int, very_small_float), &Int(i64::MIN));
+    /// assert_eq!(add(boring_int, float_nan), boring_int));
+    /// ```
+    /// 
+    /// When adding an `Int` to a `Float`, it casts `Int` to `Float`.
+    /// Float encompasses all values of `Int`,
+    /// although some precision may be lost due to floating point error.
+    /// It then performs the same as if given two `Float`s
     pub fn add(&self, other: &Types) -> Result<Self, Error> {
         match (self, other) {
             (Int(left_int), Int(right_int)) => {Ok(
@@ -180,11 +216,10 @@ impl Types <'_> {
                 )
             )},
             (Int(int), Float(float)) => {
-                let float_as_int = float_to_int_or_err(*float)?; // have to make function to try and turn a float into an int, and throw the right error if not
-                // like the custom error type and all
+                let as_int = *float as i64;
                 Ok(
                 Int(
-                    int + float_as_int
+                    int + as_int
                 )
             )},
             (Float(left_float), Float(right_float)) => {Ok(
@@ -194,7 +229,7 @@ impl Types <'_> {
             )},
             (Float(float), Int(int)) => {Ok(
                 Float(
-                    float + int.into()
+                    float + *int as f64
                 )
             )},
             _ => {Err(
@@ -206,14 +241,44 @@ impl Types <'_> {
             }
         }
     }
-    // syntax is `self += other`
-    // same as add, but assigns to self after calculation 
-    // returns a result, error has information, but Ok is always None
-    // it could be Option<Error>, but Result has nicer syntax
-    // (most notably control flow operator `?`)
-    fn add_assign(&mut self, other: &Types) -> Result<_, Error> {
+    /// Assigns the result of `self` + `other` to `self`.
+    /// This function will Error only if given a non number type.
+    /// A number here is either an `Int` or `Float`.
+    /// # Example
+    /// ```
+    /// let number_one = &Int(1);
+    /// let meaning_of_life = &Float(42.42);
+    /// let meaning_of_uhhh_something = add_assign(meaning_of_life, number_one);
+    /// 
+    /// // other remains unchanged
+    /// assert_eq!(number_one, Ok(&Int(1)));
+    /// // self is updated to the resultant value
+    /// assert_eq!(meaning_of_life, Ok(&Float(43.42)));
+    /// // the returned value of the function is the same resultant value.
+    /// assert_eq!(meaning_of_uhhh_something, meaning_of_life);
+    /// ```
+    /// 
+    /// When given an invalid type, returns a `TypeErr`
+    /// containing the given values and operator.
+    /// # Example
+    /// ```
+    /// let moby_dick = String("Call me Ishmael.".to_string());
+    /// let and_the_universe = Int(42);
+    /// 
+    /// let wait_wrong_genre = Error {
+    ///     operator: Operator::AddAssign,
+    ///     err_type: TypeErr,
+    ///     types: vec![moby_dick, and_the_universe]
+    /// }:
+    /// assert_eq!(add_assign(moby_dick, and_the_universe), Err(wait_wrong_genre)):
+    /// ```
+    /// For precise behavior of addition, see [Types::add].
+    /// Mathematically equivalent to `self = add(self, other)`.
+    fn add_assign(&mut self, other: &Types) -> Result<&Self, Error> {
+        // propagate errors from the underlying add
         *self = self.add(other)?;
-        Ok(None)
+        // return a pointer to the updated value
+        Ok(&self)
     }
 
     // compare types of two inputs.
@@ -378,7 +443,7 @@ impl Types <'_> {
 }
 
 // Functions for arrays & dictionaries
-impl Types <'_> {
+impl Types {
     // get value at index or key
     // value can be any variable
     fn read_index(&self, index: &Types) -> Result<Types, Error> {   
@@ -397,7 +462,7 @@ impl Types <'_> {
             },
             _ => {
                 Err(Error{
-                    operator: Operator::ReadIndex,
+                    operator: Operator::ReadKey,
                     err_type: TypeErr,
                     types: vec![self, index],
                 })
