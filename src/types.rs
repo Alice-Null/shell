@@ -1,49 +1,51 @@
 #![warn(clippy::all)]
 
 use std::collections::BTreeMap;
+use std::fmt::{Display};
 use std::{ffi::OsString, path::PathBuf};
-use std::ops::Add as stdAdd;
 
-/// Every valid type
-enum Types {
+/// simple types, things that can reasonably be arguments.
+pub enum ShType {
     Bool(bool),
-    String(OsString),
+    ShString(OsString),
     Int(i64),
     Float(f64),
     Path(PathBuf),
-    Array(Vec<Types>),
-    Dictionary(BTreeMap<OsString, Types>),
+    Array(Vec<ShType>),
+    // these are basically dynamic classes
+    Dictionary(BTreeMap<OsString, ShType>)
 }
-use Types::*;
-use ErrorVariant::*;
-/// Every valid type, without data 
-#[derive(Clone, Copy)]
-enum SimpleDiscriminant {
+#[repr(u8)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub enum ShTypeDiscrim { // @work; probably use strum
     Bool,
-    String,
+    ShString,
     Int,
     Float,
     Path,
     Array,
-    Dictionary
+    // these are basically dynamic classes
+    Dictionary,
 }
-// for when the actual value isn't important
-impl From<Types> for SimpleDiscriminant {
-    fn from(value: Types) -> Self {
+impl From<ShType> for ShTypeDiscrim {
+    fn from(value: ShType) -> Self {
         match value {
-            Bool(_) => SimpleDiscriminant::Bool,
-            String(_) => SimpleDiscriminant::String,
-            Int(_) => SimpleDiscriminant::Int,
-            Float(_) => SimpleDiscriminant::Float,
-            Path(_) => SimpleDiscriminant::Path,
-            Array(_) => SimpleDiscriminant::Array,
-            Dictionary(_) => SimpleDiscriminant::Dictionary
-            
+            Bool(_) => Self::Bool,
+            ShString(_) => Self::ShString,
+            Int(_) => Self::Int,
+            Float(_) => Self::Float,
+            Path(_) => Self::Path,
+            Array(_) => Self::Array,
+            Dictionary(_) => Self::Dictionary,
         }
     }
 }
-
-/// every possible operation
+impl From<&ShType> for &ShTypeDiscrim {
+    fn from(value: &ShType) -> Self {
+        value.into() // why is this even necesarry what
+    }
+}
+use ShType::*;
 /// mostly for error propogation
 #[derive(Clone, Copy)]
 enum Operator {
@@ -77,13 +79,38 @@ enum ErrorVariant {
     OverflowErr,
     DivideByZeroErr
 }
-#[derive(Clone)]
-struct Error <'a> {
-    operator: Operator,
-    err_type: ErrorVariant,
-    types: Vec<&'a Types>
-}
 
+#[derive(Clone)]
+pub struct Error {
+    pub(crate) operator: Operator,
+    err_type: ErrorVariant,
+    msg: String
+}
+impl Display for ShType {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // everything implements display, except String (OsString() and Path (PathBuf)
+            // OsString has a lossy display, and PathBuf has a display function
+            // then just write to the formatter
+            Bool(b) => write!(fmt, "{}", b),
+            ShString(os_string) => {
+                let rust_string = os_string.to_string_lossy(); 
+                // displays with failure character on invalid unicode
+                // @work there should be a better way to do this
+                // i don't know how, but this feels wrong
+                write!(fmt, "{}", rust_string)    
+            },
+            Int(int) => write!(fmt, "{}", int),
+            Float(float) => write!(fmt, "{}", float),
+            Path(path) => write!(fmt, "{}", path.display()),
+        }
+    }
+}
+/*
+##### ALL OF THIS IS BEING SCRAPPED FOR NOW
+##### MATH ISN"T AS IMPORTANT AS PARSING
+##### I"M WORKING ON IT ON A DIFFERENT COMPUTER, BUT IT"S NOT IMPORTANT 
+##### YET, IT"S A MORE ADVANCED FEATURE AND I WANT THIS TO JUST WORK AT LEAST A LITTLE
 // Boolean operations
 // (bitwise operatons, but only bools are supported)
 impl Types {
@@ -104,7 +131,6 @@ impl Types {
         }
     }
 }
-
 // Math functions                                       //
 // anything that isn't a float or int throws a typerror //
 // only implements things that already exist in rust    //
@@ -476,4 +502,4 @@ impl Types {
         //     });
         // }
     }
-}
+}*/
