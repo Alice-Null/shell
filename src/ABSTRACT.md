@@ -1,3 +1,12 @@
+meta comments:
+@work           ; thing that needs to be done
+    @work_tag   ; thing that needs to be done,
+    but easier to tell which thintgs are related to eachother
+@feature        ; something that can be added in future
+@split          ; move part of a file into another part of a file
+@bookmark       ; there hopefully is never more than one of these
+                wherever i left off
+
 ## this shell is not posix compliant
 
 A shell has syntax
@@ -20,7 +29,7 @@ assert [[fizz == buzz]];
 explicitly typed variables (eg, foo, fizz) have one type.
 implicitly typed variables (eg; bar, buzz) are dynamically typed.
 
-variables may be called by using a `$`, similarly to posix sh
+variables may be called by using a `$`, similarly to bash
 eg;
 ```
 let foo = "i like crows";
@@ -39,3 +48,10 @@ there are also conditional commands, like && which only runs if the previous com
 
 # logic flow
 if statements and loops
+
+# hey i never finished this
+# oh well
+# maybe one day
+
+anyways so comments, # to comment out the rest of the line, #* to comment out until *# or EOF
+because yay
